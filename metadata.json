@@ -1,0 +1,11 @@
+{
+  "name": "SmartWealth Dashboard",
+  "description": "Professional personal finance dashboard for tracking cash, stocks, savings, and pensions with OCR support.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "Personal Finance Tracking",
+    "Stock Portfolio",
+    "Savings & Pension Projection",
+    "OCR Transaction Extraction"
+  ]
+}

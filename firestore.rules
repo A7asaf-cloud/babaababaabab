@@ -1,0 +1,172 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Phase 3: Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+    
+    function existing() {
+      return resource.data;
+    }
+
+    // Phase 4: Entity Validations
+    
+    function isValidUserProfile(data) {
+      return data.keys().hasAll(['balance', 'pension', 'updatedAt']) &&
+             data.keys().size() == 3 &&
+             data.balance is number &&
+             data.pension is map &&
+             data.pension.keys().hasAll(['balance', 'monthlyContribution', 'retirementDate', 'expectedAnnualReturn']) &&
+             data.pension.balance is number &&
+             data.pension.monthlyContribution is number &&
+             data.pension.retirementDate is string &&
+             data.pension.expectedAnnualReturn is number &&
+             data.updatedAt == request.time;
+    }
+
+    function isValidTransaction(data) {
+      return data.keys().hasAll(['userId', 'date', 'amount', 'type', 'category', 'description', 'account']) &&
+             data.keys().size() == 7 &&
+             data.userId == request.auth.uid &&
+             data.date is string &&
+             data.amount is number &&
+             data.type in ['income', 'expense'] &&
+             data.category is string &&
+             data.category.size() <= 100 &&
+             data.description is string &&
+             data.description.size() <= 500 &&
+             data.account is string;
+    }
+
+    function isValidStock(data) {
+      return data.keys().hasAll(['userId', 'symbol', 'name', 'shares', 'avgBuyPrice', 'currentPrice', 'buyDate']) &&
+             data.keys().size() == 7 &&
+             data.userId == request.auth.uid &&
+             data.symbol is string &&
+             data.symbol.size() <= 20 &&
+             data.shares is number &&
+             data.avgBuyPrice is number &&
+             data.currentPrice is number &&
+             data.buyDate is string;
+    }
+
+    function isValidStockTransaction(data) {
+      return data.keys().hasAll(['userId', 'symbol', 'shares', 'price', 'date', 'type']) &&
+             data.keys().size() == 6 &&
+             data.userId == request.auth.uid &&
+             data.symbol is string &&
+             data.shares is number &&
+             data.price is number &&
+             data.date is string &&
+             data.type in ['buy', 'sell'];
+    }
+
+    function isValidSavingsGoal(data) {
+      return data.keys().hasAll(['userId', 'name', 'targetAmount', 'currentAmount', 'deadline', 'color']) &&
+             data.keys().size() == 6 &&
+             data.userId == request.auth.uid &&
+             data.name is string &&
+             data.name.size() <= 100 &&
+             data.targetAmount is number &&
+             data.currentAmount is number &&
+             data.deadline is string &&
+             data.color is string;
+    }
+
+    function isValidReminder(data) {
+      return data.keys().hasAll(['userId', 'title', 'dueDate', 'amount', 'isPaid']) &&
+             data.keys().size() == 5 &&
+             data.userId == request.auth.uid &&
+             data.title is string &&
+             data.dueDate is string &&
+             data.amount is number &&
+             data.isPaid is bool;
+    }
+
+    function isValidRecurring(data) {
+      return data.keys().hasAll(['userId', 'amount', 'type', 'category', 'description', 'dayOfMonth', 'lastApplied']) &&
+             data.keys().size() == 7 &&
+             data.userId == request.auth.uid &&
+             data.amount is number &&
+             data.type in ['income', 'expense'] &&
+             data.category is string &&
+             data.description is string &&
+             data.dayOfMonth is number &&
+             data.lastApplied is string;
+    }
+
+    // Rules Mapping
+    
+    match /users/{userId} {
+      allow get: if isOwner(userId);
+      allow create: if isOwner(userId) && isValidUserProfile(incoming());
+      allow update: if isOwner(userId) && isValidUserProfile(incoming());
+    }
+
+    match /transactions/{id} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidTransaction(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidTransaction(incoming());
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /stocks/{id} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidStock(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidStock(incoming());
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /stockTransactions/{id} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidStockTransaction(incoming());
+      allow update: if false; // Transactions should be immutable
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /savingsGoals/{id} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidSavingsGoal(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidSavingsGoal(incoming());
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /reminders/{id} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidReminder(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidReminder(incoming());
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+
+    match /recurring/{id} {
+      allow list: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow get: if isSignedIn() && resource.data.userId == request.auth.uid;
+      allow create: if isSignedIn() && isValidRecurring(incoming());
+      allow update: if isSignedIn() && resource.data.userId == request.auth.uid && isValidRecurring(incoming());
+      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+    }
+  }
+}
